@@ -187,4 +187,5 @@ def violation_summary():
 
 if __name__ == "__main__":
     print(f"✅ 기관 고유 ID: {ORG_ID}")
-    socketio.run(app, port=5000)
+    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
