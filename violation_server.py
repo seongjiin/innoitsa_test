@@ -14,11 +14,6 @@ STATIC_DIR = "static"
 USERS_FILE_NAME = "users.json"
 DB_FILE_NAME = "violation_logs.db"
 
-# -------------------- 고유 ID 생성 --------------------
-def generate_org_id(length=10):
-    chars = string.ascii_lowercase + string.digits
-    return ''.join(random.choices(chars, k=length))
-
 # -------------------- 기관 디렉토리 초기화 --------------------
 def init_org_data():
     org_file = "org_id.txt"
@@ -75,9 +70,8 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 # -------------------- 고유 ID 생성 --------------------
 
-def generate_org_id(length=10):
-    chars = string.ascii_lowercase + string.digits
-    return ''.join(random.choices(chars, k=length))
+def generate_org_id():
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
 # -------------------- 관리자 페이지 --------------------
@@ -97,6 +91,30 @@ def admin_page():
 @app.route("/institution_id")
 def institution_id():
     return jsonify({"id": ORG_ID})
+
+@app.route("/generate_org_id", methods=["POST"])
+def generate_new_org_id():
+    new_org_id = generate_org_id()
+    org_path = os.path.join(BASE_DATA_DIR, new_org_id)
+    os.makedirs(org_path, exist_ok=True)
+
+    # 기본 데이터 초기화
+    with open(os.path.join(org_path, "users.json"), "w", encoding="utf-8") as f:
+        json.dump([], f, ensure_ascii=False, indent=2)
+    with open(os.path.join(org_path, "user_data.json"), "w", encoding="utf-8") as f:
+        json.dump({}, f, ensure_ascii=False, indent=2)
+
+    # org_id.txt 파일 업데이트
+    with open("org_id.txt", "w") as f:
+        f.write(new_org_id)
+
+    global ORG_ID, DATA_FILE
+    ORG_ID = new_org_id
+    DATA_FILE = os.path.join(BASE_DATA_DIR, ORG_ID, "user_data.json")
+
+    print(f"✅ 새 기관 고유 ID 생성: {ORG_ID}")
+    return jsonify({"org_id": ORG_ID})
+
 
 # -------------------- 사용자 등록 --------------------
 
