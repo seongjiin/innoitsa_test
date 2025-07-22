@@ -18,7 +18,7 @@ let isCalibrating = true;  // ✅ 캘리브레이션 중 여부
 // -------------------- 서버 전송 함수 --------------------
 
 function reportViolation(type = "unknown") {
-  fetch("http://localhost:5000/report_violation", {
+  fetch("https://innoitsa-test.onrender.com/report_violation", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"

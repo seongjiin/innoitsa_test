@@ -3,189 +3,248 @@ import json
 import string
 import random
 import sqlite3
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect, session, url_for
 from flask_cors import CORS
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, emit, join_room
+from flask_login import LoginManager, login_user, logout_user, login_required, UserMixin, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# -------------------- 설정 --------------------
-BASE_DATA_DIR = "data"
-TEMPLATES_DIR = "templates"
-STATIC_DIR = "static"
-USERS_FILE_NAME = "users.json"
-DB_FILE_NAME = "violation_logs.db"
+app = Flask(__name__)
+app.secret_key = 'your-secret-key'
+CORS(app, supports_credentials=True)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-# -------------------- 고유 ID 생성 --------------------
-def generate_org_id(length=10):
-    chars = string.ascii_lowercase + string.digits
-    return ''.join(random.choices(chars, k=length))
+def generate_random_id(length=8):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-# -------------------- 기관 디렉토리 초기화 --------------------
-def init_org_data():
-    org_file = "org_id.txt"
-    if os.path.exists(org_file):
-        with open(org_file, "r") as f:
-            org_id = f.read().strip()
-    else:
-        org_id = generate_org_id()
-        with open(org_file, "w") as f:
-            f.write(org_id)
+# -------------------- DB 설정 --------------------
+DB_FILE = 'admin_users.db'
 
-    org_dir = os.path.join(BASE_DATA_DIR, org_id)
-    os.makedirs(org_dir, exist_ok=True)
-
-    users_path = os.path.join(org_dir, USERS_FILE_NAME)
-    if not os.path.exists(users_path):
-        with open(users_path, "w", encoding="utf-8") as f:
-            json.dump([], f, ensure_ascii=False, indent=2)
-
-    db_path = os.path.join(org_dir, DB_FILE_NAME)
-    if not os.path.exists(db_path):
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE violations (
-                user_id TEXT PRIMARY KEY,
-                face_out_count INTEGER DEFAULT 0,
-                gaze_out_count INTEGER DEFAULT 0
+def init_db():
+    with sqlite3.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS admins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                org_id TEXT
             )
         ''')
         conn.commit()
-        conn.close()
 
-    return org_id
+init_db()
 
-# ✅ 이제 호출해도 안전함
-ORG_ID = init_org_data()
+# -------------------- 로그인 매니저 --------------------
+login_manager = LoginManager()
+login_manager.init_app(app)
 
-DATA_DIR = os.path.join(os.getcwd(), "data")
-os.makedirs(DATA_DIR, exist_ok=True)
+class Admin(UserMixin):
+    def __init__(self, id, email, org_id):
+        self.id = id
+        self.email = email
+        self.org_id = org_id
 
-DATA_FILE = os.path.join(DATA_DIR, ORG_ID, "user_data.json")
+@login_manager.user_loader
+def load_user(admin_id):
+    with sqlite3.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, email, org_id FROM admins WHERE id=?", (admin_id,))
+        row = c.fetchone()
+        if row:
+            return Admin(*row)
+    return None
 
+# -------------------- 라우터: 인증 --------------------
 
-BASE_DATA_DIR = "data"
-TEMPLATES_DIR = "templates"
-STATIC_DIR = "static"
-USERS_FILE_NAME = "users.json"
-DB_FILE_NAME = "violation_logs.db"
+@app.route("/register_admin", methods=["POST"])
+def register_admin():
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
+    if not email or not password:
+        return jsonify({"success": False, "message": "이메일과 비밀번호가 필요합니다."}), 400
 
-app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
-CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+    hashed_pw = generate_password_hash(password)
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            c = conn.cursor()
+            c.execute("INSERT INTO admins (email, password) VALUES (?, ?)", (email, hashed_pw))
+            conn.commit()
+        return jsonify({"success": True})
+    except sqlite3.IntegrityError:
+        return jsonify({"success": False, "message": "이미 존재하는 이메일입니다."}), 409
+
+@app.route("/login_admin", methods=["POST"])
+def login_admin():
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
+
+    with sqlite3.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, password, org_id FROM admins WHERE email=?", (email,))
+        row = c.fetchone()
+        if row and check_password_hash(row[1], password):
+            user = Admin(row[0], email, row[2])
+            login_user(user)
+            return jsonify({"success": True})
+    return jsonify({"success": False, "message": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
+
+@app.route("/logout_admin")
+@login_required
+def logout_admin():
+    logout_user()
+    return redirect("/")
+
+@app.route('/generate_org_id', methods=['POST'])
+@login_required
+def generate_org_id():
+    org_id = generate_random_id()
+    org_path = f"data/{org_id}"
+    os.makedirs(org_path, exist_ok=True)
+
+    # 기본 users.json, user_data.json 생성
+    with open(f"{org_path}/users.json", "w") as f:
+        json.dump({}, f)
+    with open(f"{org_path}/user_data.json", "w") as f:
+        json.dump({}, f)
+
+    return jsonify({"org_id": org_id})
+# -------------------- 라우터: 관리자 페이지 --------------------
+
+@app.route("/admin")
+@login_required
+def admin_page():
+    # ✅ 사용자 데이터 초기화
+    org_id = current_user.org_id
+    user_data_path = f"data/{org_id}/user_data.json"
+    users_path = f"data/{org_id}/users.json"
+
+    # 두 JSON 파일을 빈 딕셔너리로 초기화
+    for path in [user_data_path, users_path]:
+        if os.path.exists(path):
+            with open(path, "w") as f:
+                json.dump({}, f)
+
+    return render_template("admin.html")
+
+@app.route("/institution_id")
+@login_required
+def get_institution_id():
+    return jsonify({"org_id": current_user.org_id})
 
 # -------------------- 고유 ID 생성 --------------------
 
-def generate_org_id(length=10):
-    chars = string.ascii_lowercase + string.digits
-    return ''.join(random.choices(chars, k=length))
+@app.route("/generate_org_id", methods=["POST"])
+@login_required
+def generate_org_id():
+    org_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    with sqlite3.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute("UPDATE admins SET org_id=? WHERE id=?", (org_id, current_user.id))
+        conn.commit()
 
+    # 폴더 생성
+    os.makedirs(f"data/{org_id}", exist_ok=True)
+    for filename in ["users.json", "user_data.json"]:
+        path = f"data/{org_id}/{filename}"
+        if not os.path.exists(path):
+            with open(path, "w") as f:
+                json.dump({}, f)
 
-# -------------------- 관리자 페이지 --------------------
-
-@app.route("/admin")
-def admin_page():
-    return render_template("admin.html", org_id=ORG_ID)
-
-# -------------------- 기관 ID 조회 --------------------
-
-@app.route("/institution_id")
-def institution_id():
-    return jsonify({"id": ORG_ID})
+    return jsonify({"success": True, "org_id": org_id})
 
 # -------------------- 사용자 등록 --------------------
 
 @app.route("/register_user", methods=["POST"])
 def register_user():
-    data = request.get_json()
+    data = request.json
+    org_id = data.get("org_id")
+    user_id = data.get("user_id")
     name = data.get("name")
-    exam_id = data.get("exam_id")
+    if not (org_id and user_id and name):
+        return "Missing data", 400
 
-    if not name or not exam_id:
-        return jsonify({"status": "error", "message": "이름 또는 수험번호 누락"}), 400
+    path = f"data/{org_id}/users.json"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
 
-    user_entry = {"id": exam_id, "name": name}
-    users_path = os.path.join(BASE_DATA_DIR, ORG_ID, USERS_FILE_NAME)
-
-    with open(users_path, "r", encoding="utf-8") as f:
-        users = json.load(f)
-
-    users = [u for u in users if u["id"] != exam_id]
-    users.append(user_entry)
-
-    with open(users_path, "w", encoding="utf-8") as f:
-        json.dump(users, f, ensure_ascii=False, indent=2)
-
-    return jsonify({"status": "success", "message": f"{name} 등록 완료"})
-
-# -------------------- 실시간 위반 로그 전송 예시 (선택 사항) --------------------
-# 예시용 소켓 이벤트
-@socketio.on("send_violation")
-def handle_violation(data):
-    # data = { "user_id": "1234", "face_count": 2, "gaze_count": 1 }
-    socketio.emit("violation_update", data)
-
-# -------------------- 위반 기록 수신 및 중계 --------------------
-
-
-@app.route('/report_violation', methods=['POST'])
-def report_violation():
-    data = request.get_json()
-    print("🚨 위반 보고 도착:", data)  # ⭐️⭐️⭐️ 확인용 로그
-    user_id = data.get('user_id')
-    violation_type = data.get('type')
-
-    # 👉 이 부분 추가!
-    socketio.emit("violation_update", {
-        "user_id": data["user_id"],
-        "face_count": 1 if data["type"] == "face_outside_webcam_frame" else 0,
-        "gaze_count": 1 if data["type"] == "eye_outside_frame" else 0,
-    })
-    
-    if not user_id or not violation_type:
-        return jsonify({"error": "Invalid data"}), 400
-
-    # 데이터 파일 로드
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            admin_data = json.load(f)
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            users = json.load(f)
     else:
-        admin_data = {}
+        users = {}
 
-    if user_id not in admin_data:
-        admin_data[user_id] = {}
+    users[user_id] = {"name": name}
+    with open(path, "w") as f:
+        json.dump(users, f)
 
-    if violation_type not in admin_data[user_id]:
-        admin_data[user_id][violation_type] = 0
+    return "User registered", 200
 
-    admin_data[user_id][violation_type] += 1
+# -------------------- 위반 보고 --------------------
 
-    # 👉 여기서 소켓으로 관리자 페이지에 실시간 전송
-    face_count = admin_data[user_id].get("face_out", 0)
-    gaze_count = admin_data[user_id].get("gaze_out", 0)
-    socketio.emit("violation_update", {
+@app.route("/report_violation", methods=["POST"])
+def report_violation():
+    data = request.json
+    org_id = data.get("org_id")
+    user_id = data.get("user_id")
+    violation_type = data.get("violation_type")
+    if not (org_id and user_id and violation_type):
+        return "Missing data", 400
+
+    data_path = f"data/{org_id}/user_data.json"
+    users_path = f"data/{org_id}/users.json"
+
+    os.makedirs(os.path.dirname(data_path), exist_ok=True)
+
+    if os.path.exists(data_path):
+        with open(data_path, "r") as f:
+            user_data = json.load(f)
+    else:
+        user_data = {}
+
+    if user_id not in user_data:
+        name = "이름 없음"
+        if os.path.exists(users_path):
+            with open(users_path, "r") as f:
+                users = json.load(f)
+                name = users.get(user_id, {}).get("name", "이름 없음")
+        user_data[user_id] = {"name": name, "eye_outside_frame": 0, "face_outside_webcam_frame": 0}
+
+    user_data[user_id][violation_type] += 1
+    with open(data_path, "w") as f:
+        json.dump(user_data, f)
+
+    socketio.emit("new_violation", {
         "user_id": user_id,
-        "face": face_count,   # ✅ 수정됨
-        "gaze": gaze_count    # ✅ 수정됨
-    })
+        "violation_type": violation_type,
+        "name": user_data[user_id]["name"]
+    }, room=org_id)
 
+    return "Violation reported", 200
 
-    # 파일 저장
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(admin_data, f, ensure_ascii=False, indent=2)
+# -------------------- Socket.IO 연결 --------------------
 
-    return jsonify({"status": "success"}), 200
+@socketio.on("join")
+def on_join(data):
+    org_id = data.get("org_id")
+    join_room(org_id)
+    print(f"Socket joined room: {org_id}")
 
-@app.route('/violation_summary')
+# -------------------- 요약 --------------------
+
+@app.route("/violation_summary")
+@login_required
 def violation_summary():
-    if not os.path.exists(DATA_FILE):
+    org_id = current_user.org_id
+    path = f"data/{org_id}/user_data.json"
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return jsonify(json.load(f))
+    else:
         return jsonify({})
-    with open(DATA_FILE, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    return jsonify(data)
 
-# -------------------- 실행 --------------------
+# -------------------- 시작 --------------------
 
-if __name__ == "__main__":
-    print(f"✅ 기관 고유 ID: {ORG_ID}")
-    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
+if __name__ == '__main__':
+    socketio.run(app, host="0.0.0.0", port=5000)
