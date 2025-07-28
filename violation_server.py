@@ -68,6 +68,14 @@ def create_org_directory(org_id):
         conn.commit()
         conn.close()
 
+# -------------------- 로그인 라우트 추가 --------------------
+@app.route("/login_page")
+def login_page():
+    return render_template("login.html")
+
+@app.route("/signup_page")
+def signup_page():
+    return render_template("signup.html")
 
 # -------------------- 관리자 회원가입 --------------------
 @app.route("/signup", methods=["POST"])
