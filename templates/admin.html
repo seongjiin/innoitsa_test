@@ -87,8 +87,7 @@
   <h1>📋 부정행위 실시간 로그</h1>
 
   <div id="institution-id">
-    기관 고유 ID: <span id="institutionCode">불러오는 중...</span>
-    <button id="generate-btn" onclick="generateOrgId()">🔄 ID 생성</button>
+    기관 고유 ID: <span id="institutionCode">{{ org_id }}</span>
   </div>
 
   <div id="user-form">
@@ -100,68 +99,40 @@
   <div id="violation-log"></div>
 
   <script>
-    let currentOrgId = null;
+  let currentOrgId = "{{ org_id }}";  // 서버에서 넘겨주는 기관 ID 직접 할당
 
-    async function fetchInstitutionId() {
-      try {
-        const res = await fetch("/institution_id");
-        const data = await res.json();
-        currentOrgId = data.org_id;
-        document.getElementById("institutionCode").textContent = data.org_id || "없음";
-      } catch (e) {
-        document.getElementById("institutionCode").textContent = "불러오기 실패";
-        console.error("기관 ID 불러오기 실패:", e);
-      }
+  document.getElementById("institutionCode").textContent = currentOrgId || "없음";
+
+  async function registerUser() {
+    const name = document.getElementById("name").value;
+    const examId = document.getElementById("exam_id").value;
+
+    if (!name || !examId) {
+      alert("이름과 수험번호를 입력해주세요.");
+      return;
     }
 
-    async function generateOrgId() {
-      try {
-        const res = await fetch("/generate_org_id", { method: "POST" });
-        const data = await res.json();
-        currentOrgId = data.org_id;
-        document.getElementById("institutionCode").textContent = data.org_id;
-        alert("새로운 기관 고유 ID가 생성되었습니다!");
-      } catch (e) {
-        alert("ID 생성 실패");
-        console.error(e);
-      }
+    const payload = {
+      name: name,
+      exam_id: examId,
+      org_id: currentOrgId
+    };
+
+    const res = await fetch("/register_user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await res.json();
+    if (res.ok) {
+      alert("사용자 등록 완료!");
+    } else {
+      alert("등록 실패: " + result.error);
     }
-
-    async function registerUser() {
-      const name = document.getElementById("name").value;
-      const examId = document.getElementById("exam_id").value;
-
-      if (!name || !examId) {
-        alert("이름과 수험번호를 입력해주세요.");
-        return;
-      }
-
-      if (!currentOrgId) {
-        alert("기관 고유 ID가 없습니다. 먼저 생성 또는 로그인하세요.");
-        return;
-      }
-
-      const payload = {
-        name: name,
-        exam_id: examId,
-        org_id: currentOrgId
-      };
-
-      const res = await fetch("/register_user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      const result = await res.json();
-      if (res.ok) {
-        alert("사용자 등록 완료!");
-      } else {
-        alert("등록 실패: " + result.error);
-      }
-    }
-
-    fetchInstitutionId();
-  </script>
+  }
+  
+  window.orgId = "{{ org_id }}";
+</script>
 </body>
 </html>
