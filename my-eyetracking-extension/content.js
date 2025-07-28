@@ -1,13 +1,35 @@
-// -------------------- 사용자 ID 설정 --------------------
+// -------------------- 사용자 정보 입력 --------------------
 
-let userId = localStorage.getItem('eyetracking_user_id');
-if (!userId) {
-  userId = prompt("🆔 사용자 ID를 입력하세요 (예: 수험번호):");
-  if (userId) {
-    localStorage.setItem('eyetracking_user_id', userId);
+let userName = localStorage.getItem('eyetracking_user_name');
+if (!userName) {
+  userName = prompt("👤 이름을 입력하세요:");
+  if (userName && userName.trim() !=="") {
+    localStorage.setItem('eyetracking_user_name', userName.trim());
   } else {
-    alert("❌ 사용자 ID가 필요합니다. 새로고침 후 다시 시도하세요.");
-    throw new Error("사용자 ID가 설정되지 않았습니다.");
+    alert("❌ 이름이 필요합니다. 새로고침 후 다시 시도하세요.");
+    throw new Error("이름이 설정되지 않았습니다.");
+  }
+}
+
+let examId = localStorage.getItem('eyetracking_exam_id');
+if (!examId) {
+  examId = prompt("🆔 수험번호를 입력하세요:");
+  if (examId && examId.trim() !=="") {
+    localStorage.setItem('eyetracking_exam_id', examId.trim());
+  } else {
+    alert("❌ 수험번호가 필요합니다. 새로고침 후 다시 시도하세요.");
+    throw new Error("수험번호가 설정되지 않았습니다.");
+  }
+}
+
+let orgId = localStorage.getItem('eyetracking_org_id');
+if (!orgId) {
+  orgId = prompt("🏷️ 관리자 고유 ID를 입력하세요:");
+  if (orgId && orgId.trim() !=="") {
+    localStorage.setItem('eyetracking_org_id', orgId.trim());
+  } else {
+    alert("❌ 고유 ID가 필요합니다. 새로고침 후 다시 시도하세요.");
+    throw new Error("고유 ID가 설정되지 않았습니다.");
   }
 }
 
@@ -24,7 +46,9 @@ function reportViolation(type = "unknown") {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      user_id: userId,
+      user_id: examId,
+      name: userName,
+      org_id: orgId,
       timestamp: new Date().toISOString(),
       event: "violation_detected",
       type: type

@@ -198,10 +198,14 @@ def report_violation():
     with open(data_file, 'w', encoding='utf-8') as f:
         json.dump(admin_data, f, ensure_ascii=False, indent=2)
 
+    # ✅ emit 형식 통일 (admin.js가 기대하는 구조로)
+    face_count = admin_data[user_id].get("face_out", 0)
+    gaze_count = admin_data[user_id].get("gaze_out", 0)
+
     socketio.emit("violation_update", {
         "user_id": user_id,
-        "violation_type": violation_type,
-        "count": admin_data[user_id][violation_type]
+        "face_count": face_count,
+        "gaze_count": gaze_count
     })
 
     return jsonify({"status": "success"}), 200

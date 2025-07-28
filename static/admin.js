@@ -58,8 +58,8 @@ socket.on("violation_update", (data) => {
   console.log("📦 실시간 데이터 수신:", data);
 
   const user_id = data.user_id;
-  const face_count = data.face ?? 0;
-  const gaze_count = data.gaze ?? 0;
+  const face_count = data.face_count ?? 0;   // ✅ 키 이름 수정
+  const gaze_count = data.gaze_count ?? 0;   // ✅ 키 이름 수정
 
   if (!violationCounts[user_id]) {
     violationCounts[user_id] = { face: 0, gaze: 0 };
