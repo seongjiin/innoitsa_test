@@ -116,6 +116,10 @@ def login():
     else:
         return jsonify({"status": "error", "message": "로그인 실패"}), 401
 
+# -------------------- 아무말 출력 --------------------
+@app.route("/")
+def index():
+    return "✅ 서버가 정상적으로 실행 중입니다."
 
 # -------------------- 대시보드 --------------------
 @app.route("/dashboard/<org_id>")
