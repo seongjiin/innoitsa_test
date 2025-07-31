@@ -10,7 +10,7 @@
     "storage"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "https://innoitsa-test.onrender.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -24,7 +24,7 @@
     }
   ],
   "web_accessible_resources": [
-    {       
+    {
       "resources": ["webgazer.js"],
       "matches": ["<all_urls>"]
     }

@@ -3,7 +3,7 @@
 let userName = localStorage.getItem('eyetracking_user_name');
 if (!userName) {
   userName = prompt("👤 이름을 입력하세요:");
-  if (userName && userName.trim() !=="") {
+  if (userName && userName.trim() !== "") {
     localStorage.setItem('eyetracking_user_name', userName.trim());
   } else {
     alert("❌ 이름이 필요합니다. 새로고침 후 다시 시도하세요.");
@@ -14,7 +14,7 @@ if (!userName) {
 let examId = localStorage.getItem('eyetracking_exam_id');
 if (!examId) {
   examId = prompt("🆔 수험번호를 입력하세요:");
-  if (examId && examId.trim() !=="") {
+  if (examId && examId.trim() !== "") {
     localStorage.setItem('eyetracking_exam_id', examId.trim());
   } else {
     alert("❌ 수험번호가 필요합니다. 새로고침 후 다시 시도하세요.");
@@ -25,7 +25,7 @@ if (!examId) {
 let orgId = localStorage.getItem('eyetracking_org_id');
 if (!orgId) {
   orgId = prompt("🏷️ 관리자 고유 ID를 입력하세요:");
-  if (orgId && orgId.trim() !=="") {
+  if (orgId && orgId.trim() !== "") {
     localStorage.setItem('eyetracking_org_id', orgId.trim());
   } else {
     alert("❌ 고유 ID가 필요합니다. 새로고침 후 다시 시도하세요.");
@@ -35,7 +35,7 @@ if (!orgId) {
 
 // -------------------- 상태 플래그 --------------------
 
-let isCalibrating = true;  // ✅ 캘리브레이션 중 여부
+let isCalibrating = true;  // 캘리브레이션 중 여부
 
 // -------------------- 서버 전송 함수 --------------------
 
@@ -53,22 +53,23 @@ function reportViolation(type = "unknown") {
       event: "violation_detected",
       type: type
     })
-  }).then(res => {
+  })
+  .then(res => {
     if (!res.ok) console.error("🚨 서버로 위반 보고 실패", res.status);
-  }).catch(err => {
+  })
+  .catch(err => {
     console.error("❌ 서버 통신 오류:", err);
   });
 }
 
 // -------------------- WebGazer 초기화 --------------------
 
-webgazer.clearData(); // ✅ 초기화: 이전 캘리브레이션, gaze 데이터 제거
+webgazer.clearData(); // 이전 캘리브레이션, gaze 데이터 제거
 
 if (typeof webgazer !== 'undefined') {
   console.log("WebGazer.js is loaded in content script.");
 
   let lastSentTime = 0;
-
   webgazer.setGazeListener(function(data, elapsedTime) {
     if (!data) return;
 
@@ -82,7 +83,7 @@ if (typeof webgazer !== 'undefined') {
       y: data.y
     });
 
-    checkGazePosition(data.x, data.y);  // 👈 시선 감지
+    checkGazePosition(data.x, data.y);
 
   }).begin();
 
@@ -141,7 +142,7 @@ function createCalibrationDot(left, top) {
       } else {
         alert("✅ 캘리브레이션 완료! 시선 추적이 시작됩니다.");
         isCalibrating = false;
-        removeSafeFrameOverlay();  // ✅ 프레임 제거
+        removeSafeFrameOverlay();
       }
     }
   });
@@ -161,7 +162,7 @@ function monitorFaceDetection() {
   }
 
   setInterval(() => {
-    if (isCalibrating) return;  // ✅ 캘리브레이션 중에는 무시
+    if (isCalibrating) return;
     const borderColor = window.getComputedStyle(faceBox).borderColor;
     if (borderColor === 'rgb(255, 0, 0)') {
       showWarning("face_outside_webcam_frame");
@@ -201,7 +202,7 @@ function removeSafeFrameOverlay() {
 }
 
 function checkGazePosition(x, y) {
-  if (isCalibrating) return;  // ✅ 캘리브레이션 중에는 검사 안 함
+  if (isCalibrating) return;
 
   const isOutside = (
     x < safeFrame.left || x > safeFrame.right ||
@@ -257,7 +258,7 @@ function hideWarning() {
 
 window.addEventListener('load', () => {
   setTimeout(() => {
-    createSafeFrameOverlay();   // ✅ 처음엔 프레임 보이게
+    createSafeFrameOverlay();
     monitorFaceDetection();
   }, 3000);
 });
